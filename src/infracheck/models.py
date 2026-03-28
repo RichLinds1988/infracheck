@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import Optional
 
 
 class RuleResult(BaseModel):
@@ -8,8 +7,8 @@ class RuleResult(BaseModel):
     severity: str  # high, medium, low
     passed: bool
     message: str
-    resource: Optional[str] = None
-    ai_explanation: Optional[str] = None
+    resource: str | None = None
+    ai_explanation: str | None = None
 
 
 class CategoryScore(BaseModel):

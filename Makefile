@@ -1,4 +1,4 @@
-.PHONY: test lint format
+.PHONY: test lint format fix pre-push
 
 test:
 	uv run pytest
@@ -8,3 +8,9 @@ lint:
 
 format:
 	uv run ruff format .
+
+fix:
+	uv run ruff check --fix .
+	uv run ruff format .
+
+pre-push: lint test
