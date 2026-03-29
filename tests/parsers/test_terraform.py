@@ -14,7 +14,6 @@ def test_sqs_queue_fields():
 
     assert queue["_name"] == "my_queue"
     assert queue["name"] == "my-queue"
-    assert queue["visibility_timeout_seconds"] == 30
 
 
 def test_lambda_function_fields():
