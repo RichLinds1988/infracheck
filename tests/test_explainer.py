@@ -1,6 +1,11 @@
 from unittest.mock import MagicMock, patch
 
-from infracheck.explainer import ExplanationResponse, FindingExplanation, _build_prompt, explain_findings
+from infracheck.explainer import (
+    ExplanationResponse,
+    FindingExplanation,
+    _build_prompt,
+    explain_findings,
+)
 from infracheck.models import CategoryScore, Report, RuleResult
 
 
@@ -40,45 +45,62 @@ class TestExplainFindings:
         assert result is report
 
     def test_populates_ai_explanation_on_failed_finding(self):
-        report = _make_report([_make_finding("s3_public_access", passed=False, resource="my_bucket")])
+        finding = _make_finding("s3_public_access", passed=False, resource="my_bucket")
+        report = _make_report([finding])
 
         with patch("infracheck.explainer.anthropic.Anthropic") as mock_anthropic:
-            mock_anthropic.return_value.messages.parse.return_value = _mock_response([
-                FindingExplanation(
-                    rule_id="s3_public_access",
-                    resource="my_bucket",
-                    explanation="Set block_public_acls = true.",
-                )
-            ])
+            mock_anthropic.return_value.messages.parse.return_value = _mock_response(
+                [
+                    FindingExplanation(
+                        rule_id="s3_public_access",
+                        resource="my_bucket",
+                        explanation="Set block_public_acls = true.",
+                    )
+                ]
+            )
             result = explain_findings(report)
 
         assert result.failed_findings[0].ai_explanation == "Set block_public_acls = true."
 
     def test_does_not_populate_ai_explanation_on_passed_findings(self):
-        report = _make_report([
-            _make_finding("s3_public_access", passed=True),
-            _make_finding("rds_multi_az", passed=False, resource="my_db"),
-        ])
+        report = _make_report(
+            [
+                _make_finding("s3_public_access", passed=True),
+                _make_finding("rds_multi_az", passed=False, resource="my_db"),
+            ]
+        )
 
         with patch("infracheck.explainer.anthropic.Anthropic") as mock_anthropic:
-            mock_anthropic.return_value.messages.parse.return_value = _mock_response([
-                FindingExplanation(rule_id="rds_multi_az", resource="my_db", explanation="Set multi_az = true.")
-            ])
+            mock_anthropic.return_value.messages.parse.return_value = _mock_response(
+                [
+                    FindingExplanation(
+                        rule_id="rds_multi_az", resource="my_db", explanation="Set multi_az = true."
+                    )
+                ]
+            )
             result = explain_findings(report)
 
         assert all(f.ai_explanation is None for f in result.passed_findings)
 
     def test_matches_by_rule_id_and_resource(self):
-        report = _make_report([
-            _make_finding("sqs_dlq", passed=False, resource="queue_a"),
-            _make_finding("sqs_dlq", passed=False, resource="queue_b"),
-        ])
+        report = _make_report(
+            [
+                _make_finding("sqs_dlq", passed=False, resource="queue_a"),
+                _make_finding("sqs_dlq", passed=False, resource="queue_b"),
+            ]
+        )
 
         with patch("infracheck.explainer.anthropic.Anthropic") as mock_anthropic:
-            mock_anthropic.return_value.messages.parse.return_value = _mock_response([
-                FindingExplanation(rule_id="sqs_dlq", resource="queue_a", explanation="Fix for queue_a."),
-                FindingExplanation(rule_id="sqs_dlq", resource="queue_b", explanation="Fix for queue_b."),
-            ])
+            mock_anthropic.return_value.messages.parse.return_value = _mock_response(
+                [
+                    FindingExplanation(
+                        rule_id="sqs_dlq", resource="queue_a", explanation="Fix for queue_a."
+                    ),
+                    FindingExplanation(
+                        rule_id="sqs_dlq", resource="queue_b", explanation="Fix for queue_b."
+                    ),
+                ]
+            )
             result = explain_findings(report)
 
         explanations = {f.resource: f.ai_explanation for f in result.failed_findings}
