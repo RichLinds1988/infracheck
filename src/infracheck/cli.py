@@ -8,6 +8,8 @@ from infracheck.analyzers.engine import run
 from infracheck.output.formatter import print_json, print_report
 from infracheck.parsers.terraform import parse_directory
 
+VALID_CATEGORIES = {"fault_tolerance", "scalability", "security", "observability"}
+
 
 class OutputFormat(str, Enum):
     text = "text"
@@ -19,10 +21,15 @@ def analyze(
         default=None,
         help="Path to the directory containing Terraform files.",
     ),
-    explain: bool = typer.Option(
-        False,
+    explain: str = typer.Option(
+        None,
         "--explain",
-        help="Use Claude to add plain-language explanations to each failing check.",
+        help=(
+            "Use Claude to explain failing checks. "
+            "Optionally filter to one category "
+            "(fault_tolerance, scalability, security, observability). "
+            "Omit a value to explain all failures."
+        ),
     ),
     output: OutputFormat = typer.Option(
         OutputFormat.text,
@@ -57,7 +64,18 @@ def analyze(
 
     report = run(path=resolved_path, resources=resources)
 
-    if explain:
+    if explain is not None:
+        if explain not in VALID_CATEGORIES and explain != "":
+            typer.echo(
+                typer.style(
+                    f"Error: unknown category '{explain}'. "
+                    f"Valid options: {', '.join(sorted(VALID_CATEGORIES))}",
+                    fg="red",
+                ),
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
         if not os.getenv("ANTHROPIC_API_KEY"):
             typer.echo(
                 typer.style(
@@ -67,10 +85,12 @@ def analyze(
                 err=True,
             )
             raise typer.Exit(code=1)
+
+        categories = {explain} if explain else None
         typer.echo("Generating explanations...", err=json_mode)
         from infracheck.explainer import explain_findings
 
-        report = explain_findings(report)
+        report = explain_findings(report, categories=categories)
 
     if json_mode:
         print_json(report)

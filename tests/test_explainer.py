@@ -17,10 +17,12 @@ def _make_report(findings: list[RuleResult]) -> Report:
     )
 
 
-def _make_finding(rule_id: str, passed: bool, resource: str | None = None) -> RuleResult:
+def _make_finding(
+    rule_id: str, passed: bool, resource: str | None = None, category: str = "security"
+) -> RuleResult:
     return RuleResult(
         rule_id=rule_id,
-        category="security",
+        category=category,
         severity="high",
         passed=passed,
         message="test message",
@@ -80,7 +82,7 @@ class TestExplainFindings:
             )
             result = explain_findings(report)
 
-        assert all(f.ai_explanation is None for f in result.passed_findings)
+        assert all(finding.ai_explanation is None for finding in result.passed_findings)
 
     def test_matches_by_rule_id_and_resource(self):
         report = _make_report(
@@ -103,7 +105,9 @@ class TestExplainFindings:
             )
             result = explain_findings(report)
 
-        explanations = {f.resource: f.ai_explanation for f in result.failed_findings}
+        explanations = {
+            finding.resource: finding.ai_explanation for finding in result.failed_findings
+        }
         assert explanations["queue_a"] == "Fix for queue_a."
         assert explanations["queue_b"] == "Fix for queue_b."
 
@@ -115,6 +119,55 @@ class TestExplainFindings:
             result = explain_findings(report)
 
         assert result.failed_findings[0].ai_explanation is None
+
+    def test_category_filter_only_explains_matching_category(self):
+        security_finding = _make_finding(
+            "s3_public_access", passed=False, resource="bucket", category="security"
+        )
+        fault_finding = _make_finding(
+            "sqs_dlq", passed=False, resource="queue", category="fault_tolerance"
+        )
+
+        from infracheck.models import CategoryScore
+
+        report = Report(
+            path="./infra",
+            overall_score=5,
+            categories=[
+                CategoryScore(name="security", score=5, findings=[security_finding]),
+                CategoryScore(name="fault_tolerance", score=5, findings=[fault_finding]),
+            ],
+        )
+
+        with patch("infracheck.explainer.anthropic.Anthropic") as mock_anthropic:
+            mock_anthropic.return_value.messages.parse.return_value = _mock_response(
+                [
+                    FindingExplanation(
+                        rule_id="s3_public_access",
+                        resource="bucket",
+                        explanation="Fix for security.",
+                    )
+                ]
+            )
+            result = explain_findings(report, categories={"security"})
+
+        security_results = next(cat for cat in result.categories if cat.name == "security")
+        fault_results = next(cat for cat in result.categories if cat.name == "fault_tolerance")
+
+        assert security_results.findings[0].ai_explanation == "Fix for security."
+        assert fault_results.findings[0].ai_explanation is None
+
+    def test_category_filter_skips_api_call_when_no_matching_failures(self):
+        finding = _make_finding(
+            "s3_public_access", passed=False, resource="bucket", category="security"
+        )
+        report = _make_report([finding])
+
+        with patch("infracheck.explainer.anthropic.Anthropic") as mock_anthropic:
+            result = explain_findings(report, categories={"observability"})
+
+        mock_anthropic.assert_not_called()
+        assert result is report
 
 
 class TestBuildPrompt:

@@ -33,13 +33,22 @@ def _build_prompt(findings: list[RuleResult]) -> str:
     )
 
 
-def explain_findings(report: Report) -> Report:
-    """Call Claude to add plain-language explanations to all failed findings in a report.
+def explain_findings(report: Report, categories: set[str] | None = None) -> Report:
+    """Call Claude to add plain-language explanations to failed findings in a report.
 
     Returns a new Report with ai_explanation populated on each failed RuleResult.
     Requires ANTHROPIC_API_KEY to be set in the environment.
+
+    Args:
+        report: The report to enrich.
+        categories: If provided, only explain findings from these categories.
+                    If None, explain all failed findings.
     """
-    failed_findings = report.failed_findings
+    failed_findings = [
+        finding
+        for finding in report.failed_findings
+        if categories is None or finding.category in categories
+    ]
 
     if not failed_findings:
         return report
